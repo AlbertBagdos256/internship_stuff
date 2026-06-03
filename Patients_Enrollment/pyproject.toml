@@ -1,0 +1,23 @@
+[project]
+name = "patients-enrollment"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Albert Bagdasarov",email = "albertbagdasarov85@gmail.com"}
+]
+requires-python = ">=3.11"
+dependencies = [
+    "pandas (>=3.0.3,<4.0.0)",
+    "sqlalchemy (>=2.0.50,<3.0.0)",
+    "psycopg2 (>=2.9.12,<3.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "pytest (>=9.0.3,<10.0.0)"
+]

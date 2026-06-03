@@ -1,0 +1,4 @@
+SELECT * 
+FROM patients
+WHERE "SSN" IS NOT NULL
+LIMIT 100;
