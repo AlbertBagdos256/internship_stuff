@@ -1,4 +1,4 @@
-import pandas as p
+import pandas as pd
 import os
 import pyodbc
 from logger import get_logger
@@ -9,9 +9,6 @@ from datetime import datetime
 
 logger = get_logger(__name__)
 
-"""
-   A reusable SQL Server connection using environment variables or parameters.
-"""
 def get_sql_server_connection (driver: str = "SQL Server", 
                                server: str | None = None,
                                database: str | None = None,
@@ -38,8 +35,26 @@ def get_sql_server_connection (driver: str = "SQL Server",
     return pyodbc.connect(conn_str)
     
 
+def load_data_from_file(filepath: str) -> pd.DataFrame:
+    # Use chunking if the dataset is large
+    return pd.read_csv(filepath)
+
+def load_sql(path):
+    with open(path, "r") as file:
+        return file.read()
 
 
+def load_data_from_sql(
+        query_path: str,
+        engine,
+        chunk_size: int | None = None,
+        **kwargs):
+    
+    query = load_sql(query_path)
 
-
-
+    return pd.read_sql(
+        query,
+        engine,
+        chunksize=chunk_size,
+        **kwargs
+    )
