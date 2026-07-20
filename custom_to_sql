@@ -1,0 +1,74 @@
+import pyodbc
+import pandas as pd
+import numpy as np
+
+def df_to_temp_table(df: pd.DataFrame, table_name: str, conn: pyodbc.Connection,
+                      batch_size: int = 1000, if_exists: str = "replace"):
+    """
+    Pushes a DataFrame into a SQL Server temp table (#table_name) using pyodbc only.
+    The temp table persists for the life of the connection/session, so you can
+    reference it in later queries: SELECT * FROM #table_name
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+    table_name : str  -> pass WITHOUT the '#', e.g. "my_data"
+    conn : pyodbc.Connection  -> must be the SAME connection you'll query from later
+    batch_size : int  -> rows per executemany batch
+    if_exists : "replace" or "append"
+    """
+    cursor = conn.cursor()
+    full_name = f"#{table_name}"
+
+    # Drop if it already exists and we're replacing
+    if if_exists == "replace":
+        cursor.execute(f"IF OBJECT_ID('tempdb..{full_name}') IS NOT NULL DROP TABLE {full_name}")
+        conn.commit()
+
+        # --- Map pandas dtypes to SQL Server types ---
+        def sql_type(dtype, series):
+            if pd.api.types.is_integer_dtype(dtype):
+                return "BIGINT"
+            elif pd.api.types.is_float_dtype(dtype):
+                return "FLOAT"
+            elif pd.api.types.is_bool_dtype(dtype):
+                return "BIT"
+            elif pd.api.types.is_datetime64_any_dtype(dtype):
+                return "DATETIME2"
+            else:
+                # size the varchar based on actual max string length (+ buffer)
+                max_len = series.astype(str).map(len).max() if len(series) else 50
+                max_len = max(50, min(int(max_len * 1.2), 4000))
+                return f"NVARCHAR({max_len})"
+
+        cols_ddl = ", ".join(
+            f"[{col}] {sql_type(df[col].dtype, df[col])}" for col in df.columns
+        )
+        create_sql = f"CREATE TABLE {full_name} ({cols_ddl})"
+        cursor.execute(create_sql)
+        conn.commit()
+
+    # --- Insert data in batches ---
+    cols = ", ".join(f"[{c}]" for c in df.columns)
+    placeholders = ", ".join("?" for _ in df.columns)
+    insert_sql = f"INSERT INTO {full_name} ({cols}) VALUES ({placeholders})"
+
+    # Replace NaN/NaT with None so pyodbc inserts NULL
+    df_clean = df.astype(object).where(pd.notnull(df), None)
+    data = df_clean.values.tolist()
+
+    cursor.fast_executemany = True  # big speed boost for pyodbc
+
+    for i in range(0, len(data), batch_size):
+        batch = data[i:i + batch_size]
+        try:
+            cursor.executemany(insert_sql, batch)
+        except pyodbc.Error:
+            # fast_executemany can choke on mixed types; fall back row-by-row for that batch
+            cursor.fast_executemany = False
+            cursor.executemany(insert_sql, batch)
+            cursor.fast_executemany = True
+
+    conn.commit()
+    cursor.close()
+    print(f"Loaded {len(df)} rows into {full_name}")
